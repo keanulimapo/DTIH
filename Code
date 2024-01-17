@@ -1,0 +1,95 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import LSTM, Dense, Input, Concatenate
+import matplotlib.pyplot as plt
+
+from google.colab import  files   #importing the file that has the data
+uploaded =   files.upload()
+
+import  io    #Reading the from the file
+
+df=pd.read_excel(io.BytesIO(uploaded['voorbeelddata_glucose.xlsx']))
+df.rename(columns = {'glucosewaarde(historisch(gegevens.0) of scan(gegevens.1)) mmol/l': 'glucose momenteel'},inplace = True)
+df['glucose momenteel'] = df['glucose momenteel'].str.replace(',','.')
+df['glucose momenteel'] = pd.to_numeric(df['glucose momenteel'], errors='coerce')
+
+data=[]
+df = df[df['Gegevenstype']== 0]   #Removal of the data that was manually inputted, so we are left with the data the sensor has automically logged
+
+df['Tijdstempel apparaat']=pd.to_datetime(df['Tijdstempel apparaat'])
+df=df.set_index(df['Tijdstempel apparaat'])
+df['glucose momenteel']
+data= df
+data=data[['glucose momenteel']]    #Removal of all unnecessary columns
+data = data[:1000]
+
+from sklearn.preprocessing import MinMaxScaler
+
+# Scaling of the glucose levels
+scaler = MinMaxScaler()
+data['scaled_data'] = scaler.fit_transform(data['glucose momenteel'].values.reshape(-1, 1))
+
+sequence_length = 8
+X, y = [], []
+
+# Preperation of the data for the LSTM
+# The model will be trained with sequences with a length of "sequence length"
+for i in range(len(data) - sequence_length):
+    # Creating sequences of length 'sequence_length', for the LSTM model to work with
+    X.append(data['glucose momenteel'].values[i:i + sequence_length])
+    y.append(data['glucose momenteel'].values[i + sequence_length])
+
+# Converting the lists to numpy arrays
+X = np.array(X)
+y = np.array(y)
+
+# Now X and y can be used for training a model
+
+#adding th e LSTM model
+X = np.array(X)
+y = np.array(y)
+model = Sequential()
+model.add(LSTM(50, input_shape=(sequence_length, 1)))
+model.add(Dense(1))
+
+split_ratio = 0.8  # 80% for training, 20% for testing
+split_index = int(split_ratio * len(X))
+
+X_train, X_test = X[:split_index], X[split_index:]
+y_train, y_test = y[:split_index], y[split_index:]
+
+#Resshaping the data into 3D arrays and floats to train the data
+X_train = X_train.reshape(-1, sequence_length, 1)
+X_test = X_test.reshape(-1, sequence_length, 1)
+X_train = np.asarray(X_train).astype(np.float32)
+y_train = np.asarray(y_train).astype(np.float32)
+X_test = np.asarray(X_test, dtype=np.float32)
+y_test = np.asarray(y_test, dtype=np.float32)
+
+#Adding ann optimizer and a loss function to improve the learning rate
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Train the model
+model.fit(X_train, y_train, epochs=20, batch_size=32)
+
+# Evaluate the model
+loss = model.evaluate(X_test, y_test)
+
+predictions = model.predict(X_test)
+
+# Inverse transform the predictions to get them in the original scale
+X_scaled =scaler.fit_transform(predictions)
+obj = scaler.fit(predictions)
+predictions = obj.inverse_transform(X_scaled)
+
+# Visualizing the results
+plt.figure(figsize=(12, 6))
+plt.plot(data['glucose momenteel'].index[split_index + sequence_length:], data['glucose momenteel'].iloc[split_index + sequence_length:], label='True Time Series Data', alpha=0.7)
+plt.plot(data.index[split_index + sequence_length:], predictions, label='Predicted Time Series Data', alpha=0.7)
+plt.xlabel('Date')
+plt.ylabel('Value')
+plt.legend()
+plt.show()
