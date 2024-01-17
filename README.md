@@ -1,5 +1,5 @@
 # Digital twin- group10
-The code for our digital twin
+The code for our digital twin. We have used a LSTM model for our gigital twin.
 ## Environment  
 We used google colab for this project
 
